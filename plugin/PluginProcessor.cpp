@@ -4,13 +4,9 @@
 //==============================================================================
 ModLinePluginAudioProcessor::ModLinePluginAudioProcessor()
      : AudioProcessor (BusesProperties()
-                     #if ! JucePlugin_IsMidiEffect
-                      #if ! JucePlugin_IsSynth
                        .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
-                      #endif
                        .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
-                     #endif
-                       )
+                       ), value_tree_state_(*this, nullptr, "Parameters", createParameters())
 {
 }
 
@@ -86,7 +82,8 @@ void ModLinePluginAudioProcessor::changeProgramName (int index, const juce::Stri
 //==============================================================================
 void ModLinePluginAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    chorus_.Init(sampleRate, 64.f);
+    choruses_[0].Init(sampleRate, 10.f);
+    choruses_[1].Init(sampleRate, 10.f);
 }
 
 void ModLinePluginAudioProcessor::releaseResources()
@@ -97,10 +94,6 @@ void ModLinePluginAudioProcessor::releaseResources()
 
 bool ModLinePluginAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
-  #if JucePlugin_IsMidiEffect
-    juce::ignoreUnused (layouts);
-    return true;
-  #else
     // This is the place where you check if the layout is supported.
     // In this template code we only support mono or stereo.
     // Some plugin hosts, such as certain GarageBand versions, will only
@@ -110,13 +103,10 @@ bool ModLinePluginAudioProcessor::isBusesLayoutSupported (const BusesLayout& lay
         return false;
 
     // This checks if the input layout matches the output layout
-   #if ! JucePlugin_IsSynth
     if (layouts.getMainOutputChannelSet() != layouts.getMainInputChannelSet())
         return false;
-   #endif
 
     return true;
-  #endif
 }
 
 void ModLinePluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
@@ -127,6 +117,17 @@ void ModLinePluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
     juce::ScopedNoDenormals noDenormals;
     auto totalNumInputChannels  = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
+
+    float mixValue = *value_tree_state_.getRawParameterValue("mix");
+    float widthValue = *value_tree_state_.getRawParameterValue("width");
+    float speedValue = *value_tree_state_.getRawParameterValue("speed");
+
+    for (auto& chorus : choruses_)
+    {
+        chorus.SetMix(mixValue);
+        chorus.SetWidth(widthValue);
+        chorus.SetSpeed(speedValue);
+    }
 
     // In case we have more outputs than inputs, this code clears any output
     // channels that didn't contain input data, (because these aren't
@@ -148,7 +149,7 @@ void ModLinePluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
         float* channelData = buffer.getWritePointer (channel);
         for (size_t i = 0; i < buffer.getNumSamples(); ++i)
         {
-            channelData[i] = chorus_.Tick(channelData[i]);
+            channelData[i] = choruses_[channel].Tick(channelData[i]);
         }
     }
 }
@@ -178,6 +179,16 @@ void ModLinePluginAudioProcessor::setStateInformation (const void* data, int siz
     // You should use this method to restore your parameters from this memory block,
     // whose contents will have been created by the getStateInformation() call.
     juce::ignoreUnused (data, sizeInBytes);
+}
+
+juce::AudioProcessorValueTreeState::ParameterLayout ModLinePluginAudioProcessor::createParameters()
+{
+    std::vector<std::unique_ptr<juce::RangedAudioParameter>> parameters;
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>("mix", "Mix", 0.f, 1.f, 0.5f));
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>("width", "Width", 0.f, 60.f, 30.f));
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>("speed", "Freq", 0.f, 5.f, 1.f));
+
+    return {parameters.begin(), parameters.end()};
 }
 
 //==============================================================================

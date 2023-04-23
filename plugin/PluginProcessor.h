@@ -44,8 +44,16 @@ public:
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 
+    juce::AudioProcessorValueTreeState value_tree_state_;
 private:
-    dsp::Chorus<512> chorus_;
+    juce::AudioProcessorValueTreeState::ParameterLayout createParameters();
+
+    // 4096 samples should us ~ 85ms of delay at 48kHz
+    std::array<dsp::Chorus<4096>, 2> choruses_;
+
+    juce::AudioParameterFloat* mix_;
+    juce::AudioParameterFloat* chorus_width_;
+    juce::AudioParameterFloat* chorus_speed_;
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ModLinePluginAudioProcessor)
 };
